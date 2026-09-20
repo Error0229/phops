@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>phops – Video Compressor</title>
+<meta name="description" content="Compress videos to an exact size, right on your phone. Nothing is uploaded.">
+<meta name="theme-color" content="#0f1115">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="phops">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="app.css">
+<script type="importmap">
+{ "imports": { "mediabunny": "./vendor/mediabunny.min.mjs" } }
+</script>
+</head>
+<body>
+<main class="app">
+
+  <header class="top">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true">
+        <path d="M9 4h14l-7 8z M9 28h14l-7-8z" fill="currentColor"/>
+        <rect x="4" y="14.25" width="24" height="3.5" rx="1.75" fill="currentColor"/>
+      </svg>
+      <h1>phops</h1>
+    </div>
+    <span class="pill" id="netPill" title="All processing happens on this device">on-device</span>
+  </header>
+
+  <div class="banner" id="unsupported" hidden></div>
+
+  <!-- 1 · pick -->
+  <section id="pickCard" class="card pick">
+    <input id="file" type="file" accept="video/*" hidden>
+    <button id="pickBtn" class="drop" type="button">
+      <span class="drop-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="30" height="30"><path d="M12 16V5m0 0-4.5 4.5M12 5l4.5 4.5M5 19h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </span>
+      <strong>Choose a video</strong>
+      <small>It never leaves your phone</small>
+    </button>
+  </section>
+
+  <!-- 2 · source info -->
+  <section id="srcCard" class="card" hidden>
+    <div class="src">
+      <video id="srcVideo" playsinline muted preload="metadata"></video>
+      <div class="src-meta">
+        <div class="src-name" id="srcName"></div>
+        <div class="src-size num" id="srcSize"></div>
+        <div class="src-facts" id="srcFacts"></div>
+      </div>
+      <button id="changeBtn" class="ghost small" type="button">Change</button>
+    </div>
+  </section>
+
+  <!-- 3 · settings -->
+  <section id="setCard" class="card" hidden>
+    <h2>Compress by</h2>
+    <div class="seg" id="modeSeg" role="tablist">
+      <button type="button" data-mode="size" class="on">Size</button>
+      <button type="button" data-mode="percent">Percent</button>
+      <button type="button" data-mode="quality">Quality</button>
+      <button type="button" data-mode="crf">CRF</button>
+      <button type="button" data-mode="bitrate">Bitrate</button>
+    </div>
+
+    <div class="mode" data-for="size">
+      <label class="big-input">
+        <input id="sizeMB" class="num" type="number" inputmode="decimal" min="0.1" step="0.1" value="10">
+        <span>MB</span>
+      </label>
+      <div class="chips" id="sizeChips">
+        <button type="button" data-mb="8">8 MB</button>
+        <button type="button" data-mb="10">10 MB</button>
+        <button type="button" data-mb="16">16 MB<i>WhatsApp</i></button>
+        <button type="button" data-mb="20">20 MB<i>Discord</i></button>
+        <button type="button" data-mb="25">25 MB<i>Email</i></button>
+        <button type="button" data-mb="50">50 MB</button>
+        <button type="button" data-mb="100">100 MB</button>
+      </div>
+      <label class="check"><input id="strict" type="checkbox" checked> <span>Never exceed this size <em>(re-encodes if the first pass lands over)</em></span></label>
+    </div>
+
+    <div class="mode" data-for="percent" hidden>
+      <div class="slider-row">
+        <input id="percent" type="range" min="5" max="95" step="5" value="40">
+        <output class="num" id="percentOut">40%</output>
+      </div>
+      <p class="hint">Output will be about this share of the original file size.</p>
+    </div>
+
+    <div class="mode" data-for="quality" hidden>
+      <div class="seg five" id="qualitySeg">
+        <button type="button" data-q="very-low">Tiny</button>
+        <button type="button" data-q="low">Low</button>
+        <button type="button" data-q="medium" class="on">Medium</button>
+        <button type="button" data-q="high">High</button>
+        <button type="button" data-q="very-high">Best</button>
+      </div>
+      <p class="hint">Bitrate is picked automatically for the resolution. Size depends on the video.</p>
+    </div>
+
+    <div class="mode" data-for="crf" hidden>
+      <div class="slider-row">
+        <input id="crf" type="range" min="10" max="51" step="1" value="30">
+        <output class="num" id="crfOut">30</output>
+      </div>
+      <p class="hint">Constant quality, like ffmpeg's CRF – lower is better quality and a bigger file. If this phone's encoder can't do it, a matching bitrate is used instead.</p>
+    </div>
+
+    <div class="mode" data-for="bitrate" hidden>
+      <label class="big-input">
+        <input id="kbps" class="num" type="number" inputmode="numeric" min="50" step="50" value="1500">
+        <span>kbps video</span>
+      </label>
+    </div>
+
+    <div class="grid">
+      <label>Codec
+        <select id="codec"></select>
+      </label>
+      <label>Format
+        <select id="container"></select>
+      </label>
+      <label>Resolution
+        <select id="res"></select>
+      </label>
+      <label>Frame rate
+        <select id="fps"></select>
+      </label>
+      <label>Audio
+        <select id="audio">
+          <option value="auto">Auto</option>
+          <option value="192">192 kbps</option>
+          <option value="128">128 kbps</option>
+          <option value="96">96 kbps</option>
+          <option value="64">64 kbps</option>
+          <option value="48">48 kbps</option>
+          <option value="32">32 kbps</option>
+          <option value="copy">Keep original</option>
+          <option value="none">Remove audio</option>
+        </select>
+      </label>
+      <label>Channels
+        <select id="channels">
+          <option value="0">Same as source</option>
+          <option value="2">Stereo</option>
+          <option value="1">Mono</option>
+        </select>
+      </label>
+    </div>
+
+    <details class="adv">
+      <summary>Trim &amp; advanced</summary>
+      <div class="grid">
+        <label>Start at
+          <input id="trimStart" type="text" inputmode="decimal" placeholder="0:00">
+        </label>
+        <label>End at
+          <input id="trimEnd" type="text" inputmode="decimal" placeholder="end">
+        </label>
+        <label>Rate control
+          <select id="rc">
+            <option value="variable">Variable (VBR)</option>
+            <option value="constant">Constant (CBR)</option>
+          </select>
+        </label>
+        <label>Encoder
+          <select id="hw">
+            <option value="no-preference">Automatic</option>
+            <option value="prefer-hardware">Hardware (fast)</option>
+            <option value="prefer-software">Software (smaller)</option>
+          </select>
+        </label>
+        <label>Keyframe every
+          <select id="kf">
+            <option value="2">2 s</option>
+            <option value="5" selected>5 s</option>
+            <option value="10">10 s</option>
+          </select>
+        </label>
+        <label>Rotate
+          <select id="rot">
+            <option value="0">None</option>
+            <option value="90">90° right</option>
+            <option value="180">180°</option>
+            <option value="270">90° left</option>
+          </select>
+        </label>
+      </div>
+    </details>
+
+    <div class="plan" id="plan"></div>
+    <div class="warn" id="warn" hidden></div>
+
+    <button id="goBtn" class="primary" type="button">Compress</button>
+  </section>
+
+  <!-- 4 · progress -->
+  <section id="runCard" class="card run" hidden>
+    <div class="run-head">
+      <span id="runTitle">Compressing…</span>
+      <span class="num" id="runPct">0%</span>
+    </div>
+    <div class="bar"><i id="barFill"></i></div>
+    <div class="run-sub num" id="runSub">&nbsp;</div>
+    <p class="hint">Keep this screen open – phones pause encoding in the background.</p>
+    <button id="cancelBtn" class="ghost" type="button">Cancel</button>
+  </section>
+
+  <!-- 5 · result -->
+  <section id="doneCard" class="card done" hidden>
+    <div class="result">
+      <div><small>Before</small><b class="num" id="resBefore"></b></div>
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M5 12h14m0 0-5-5m5 5-5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div><small>After</small><b class="num accent" id="resAfter"></b></div>
+      <div class="saved num" id="resSaved"></div>
+    </div>
+    <video id="outVideo" controls playsinline preload="metadata"></video>
+    <div class="res-facts" id="resFacts"></div>
+    <div class="warn" id="resWarn" hidden></div>
+    <div class="actions">
+      <a id="saveBtn" class="primary" download>Save video</a>
+      <button id="shareBtn" class="ghost" type="button" hidden>Share…</button>
+    </div>
+    <div class="actions">
+      <button id="againBtn" class="ghost" type="button">Tweak settings</button>
+      <button id="newBtn" class="ghost" type="button">New video</button>
+    </div>
+  </section>
+
+  <div class="banner error" id="error" hidden></div>
+
+  <footer>
+    <p>Works offline. Videos are processed by your phone's own encoder and are never uploaded.</p>
+    <p id="installTip" hidden></p>
+    <button id="installBtn" class="ghost small" type="button" hidden>Install app</button>
+  </footer>
+</main>
+<script type="module" src="app.js"></script>
+</body>
+</html>

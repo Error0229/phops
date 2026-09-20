@@ -1,0 +1,3 @@
+local-https/cert/
+dist/
+.wrangler/
