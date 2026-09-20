@@ -1,35 +1,55 @@
-# phops – on-device video compressor (PWA)
+# phops – on-device video compressor
 
-Compresses videos entirely on the phone using the browser's WebCodecs API (the phone's own
-hardware/software encoders). No uploads, no analytics, no CDN – every file the app needs is in this folder.
+**→ [phops.catjam.dev](https://phops.catjam.dev)**
+
+Shrink a video to an exact size (20 MB for Discord, 16 MB for WhatsApp, …) right on your phone.
+The video is processed by your phone's own encoder through the browser's WebCodecs API –
+**nothing is uploaded**, there are no accounts, no analytics, and it works offline once installed.
+
+## Install it on your phone
+
+1. Open **https://phops.catjam.dev** on the phone.
+2. Add it to the home screen:
+   - **Android** (Chrome / Edge / Samsung Internet): menu **⋮ → Install app** (or *Add to Home screen*), or tap the **Install app** button at the bottom of the page.
+   - **iPhone / iPad** (Safari, iOS 17+): **Share → Add to Home Screen**.
+3. That's it. After the first load everything is cached, so it opens and compresses even in airplane mode.
+   Updates are picked up automatically the next time you open it while online.
+
+On Android you can also send a video straight to it: in your gallery tap **Share → phops**.
 
 ## Features
 - **Compress by:** target size (MB, with presets), percent of original, quality preset, CRF (constant quality), or manual bitrate
 - **Never exceed** option: re-encodes (up to 3 passes) if the encoder overshoots the target size
 - **Codecs:** H.264, H.265/HEVC, VP9, AV1, VP8 (whatever the device supports) · **Formats:** MP4, MOV, WebM, MKV
-- Resolution / frame-rate (auto picks a sensible one for the bitrate), audio bitrate / mono / keep / remove
+- Resolution / frame rate (Auto picks a sensible one for the bitrate), audio bitrate / mono / keep / remove
 - Trim, rotate, VBR/CBR, hardware vs software encoder, keyframe interval
-- Save or Share the result; on Android you can also *share a video to phops* from the gallery
-- Works offline once installed
+- Save or Share the result
 
-## Putting it on your phone
-Browsers only allow video encoding + installation from an **https://** address, so the folder has to be
-served from some static host once (the host only ever serves these files; your videos never go anywhere):
+Tip: keep the screen on while it compresses – phones pause encoding in the background.
 
-- **Local HTTPS from this PC (no online host):** run `node local-https/serve.mjs`, then on the phone (same Wi-Fi)
-  open the `http://…:8080` address it prints, install + trust the certificate once, and follow the link to the app.
-  The script makes its own certificate authority in `local-https/cert/` (limited to private-network addresses).
-  Keep that folder private and do not upload it. To undo, remove "phops local CA" from the phone's certificates.
-- Or any static host: GitHub Pages, Cloudflare Pages, Netlify (drag-and-drop the folder, minus `local-https/`).
+## Hosting it yourself
 
-Then open the URL on the phone:
-- **Android (Chrome/Edge/Samsung):** menu → *Install app* / *Add to Home screen* (or the "Install app" button in the footer)
-- **iPhone (Safari, iOS 17+):** Share → *Add to Home Screen*
+The app is plain static files with no build step and no external requests. Browsers only allow video
+encoding and installation from an **https://** address (or `localhost`), so pick one of:
 
-After the first load everything is cached; it runs with airplane mode on.
+### Any static host (Cloudflare Pages, GitHub Pages, Netlify, …)
+```
+node make-dist.mjs                                        # copies the public files into dist/
+npx wrangler pages deploy dist --project-name phops       # Cloudflare Pages example
+```
+Only upload `dist/` – it deliberately leaves out `local-https/`.
 
-## Local testing on a PC
-`npx http-server -p 8765 -c-1 .` → http://localhost:8765 (localhost counts as secure).
+### Local HTTPS from your PC (no online host)
+```
+node local-https/serve.mjs
+```
+On the phone (same Wi-Fi) open the `http://…:8080` address it prints, install and trust the certificate once,
+then follow the link to the app. The script creates its own certificate authority in `local-https/cert/`,
+restricted to private-network addresses. Keep that folder private and never upload it. To undo, remove
+"phops local CA" from the phone's certificates. Requires `openssl` (ships with Git for Windows).
+
+### Quick test on a PC
+`npx http-server -p 8765 -c-1 .` → http://localhost:8765
 
 ## Third-party
 `vendor/` contains [Mediabunny](https://mediabunny.dev) and its AAC encoder extension (MPL-2.0), unmodified.
