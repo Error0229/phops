@@ -1,8 +1,9 @@
 import {
-  Input, Output, Conversion, ALL_FORMATS, BlobSource, BufferTarget,
+  Output, Conversion, BufferTarget,
   Mp4OutputFormat, WebMOutputFormat, MkvOutputFormat, MovOutputFormat,
   Quality, canEncodeVideo, canEncodeAudio, ConversionCanceledError,
 } from 'mediabunny';
+import { createMediaInput } from './media-input.mjs';
 
 const $ = (id) => document.getElementById(id);
 const MB = 1_000_000; // decimal MB: stays under the limit whichever way an app counts
@@ -140,7 +141,7 @@ async function loadFile(file) {
   show($('doneCard'), false);
   let input;
   try {
-    input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS });
+    input = createMediaInput(file);
     const vt = await input.getPrimaryVideoTrack();
     if (!vt) throw new Error('No video track found in this file.');
     const at = await input.getPrimaryAudioTrack();
@@ -361,7 +362,7 @@ async function pickAudioCodec(plan) {
 }
 
 async function buildConversion(plan, audioMode, hw) {
-  const input = new Input({ source: new BlobSource(state.file), formats: ALL_FORMATS });
+  const input = createMediaInput(state.file);
   const format = CONTAINERS[plan.container].make();
   const output = new Output({ format, target: new BufferTarget() });
 
@@ -654,3 +655,4 @@ async function pwa() {
 wire();
 await detect();
 pwa();
+
