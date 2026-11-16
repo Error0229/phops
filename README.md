@@ -53,3 +53,9 @@ restricted to private-network addresses. Keep that folder private and never uplo
 
 ## Third-party
 `vendor/` contains [Mediabunny](https://mediabunny.dev) and its AAC encoder extension (MPL-2.0), unmodified.
+
+## Local file reader regression tests
+Run `node --test tests/*.test.mjs` with Node.js 22 or newer. The tests use the bundled
+Mediabunny library, simulate a local Blob stream throwing `network error`, and verify
+inspection and repeated conversions using slice reads with network access disabled.
+
