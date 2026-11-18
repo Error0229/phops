@@ -1,10 +1,11 @@
 // Offline shell. Files are refreshed in the background when online; bump VERSION to force a clean re-download.
-const VERSION = 'phops-v3';
+const VERSION = 'phops-v4';
 const SHELL = [
   './',
   'app.css',
   'app.js',
   'media-input.mjs',
+  'size-target.mjs',
   'manifest.webmanifest',
   'vendor/mediabunny.min.mjs',
   'vendor/mediabunny-aac-encoder.min.mjs',

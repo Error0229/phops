@@ -2,7 +2,7 @@
 
 **→ [phops.catjam.dev](https://phops.catjam.dev)**
 
-Shrink a video to an exact size (20 MB for Discord, 16 MB for WhatsApp, …) right on your phone.
+Shrink a video to fit a size limit (20 MB for Discord, 16 MB for WhatsApp, …) right on your phone.
 The video is processed by your phone's own encoder through the browser's WebCodecs API –
 **nothing is uploaded**, there are no accounts, no analytics, and it works offline once installed.
 
@@ -19,7 +19,7 @@ On Android you can also send a video straight to it: in your gallery tap **Share
 
 ## Features
 - **Compress by:** target size (MB, with presets), percent of original, quality preset, CRF (constant quality), or manual bitrate
-- **Never exceed** option: re-encodes (up to 3 passes) if the encoder overshoots the target size
+- **Never exceed** uses a short video sample to tune the bitrate for the selected size. With Automatic encoder selection, it can compare a software encoder if the first sample comes in well below budget. Very short clips go straight to compression. The app checks the finished file and can make up to three full passes if needed.
 - **Codecs:** H.264, H.265/HEVC, VP9, AV1, VP8 (whatever the device supports) · **Formats:** MP4, MOV, WebM, MKV
 - Resolution / frame rate (Auto picks a sensible one for the bitrate), audio bitrate / mono / keep / remove
 - Trim, rotate, VBR/CBR, hardware vs software encoder, keyframe interval
