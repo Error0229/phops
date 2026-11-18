@@ -212,6 +212,7 @@ function computePlan(audioOverride, videoScale = 1) {
   const codec = $('codec').value, cinfo = CODECS[codec];
   const container = $('container').value;
   const mode = state.mode;
+  const strict = mode === 'size' && $('strict').checked;
   const notes = [];
   let blocker = null;
 
@@ -262,6 +263,12 @@ function computePlan(audioOverride, videoScale = 1) {
     if (videoBps < 40e3) {
       blocker = blocker || `That size is too small for ${fmtTime(dur)} of video${audioBps ? ' with audio – try removing the audio, or' : ' –'} trim it or pick a bigger size.`;
       videoBps = 40e3;
+    }
+    if (strict) {
+      // Allow for rate-control drift plus a startup keyframe burst. The burst
+      // costs a larger share of short clips. Cap the extra reserve at 12%.
+      const reserve = Math.min(0.12, 0.04 + 0.12 / dur);
+      videoBps = Math.max(40e3, videoBps * (1 - reserve));
     }
   } else if (mode === 'bitrate') {
     const k = parseFloat($('kbps').value);
@@ -314,7 +321,7 @@ function computePlan(audioOverride, videoScale = 1) {
   return {
     codec, container, mode, start, end, trimmed, dur, rotate, width, height, fps, fpsSet, audioMode, audioBps, channels,
     videoBps, quality, rateLabel, estBytes, targetBytes, notes, blocker,
-    strict: mode === 'size' && $('strict').checked,
+    strict,
     hw: $('hw').value, kf: +$('kf').value,
   };
 }
