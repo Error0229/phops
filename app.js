@@ -1,9 +1,10 @@
 import {
   Output, Conversion, BufferTarget,
   Mp4OutputFormat, WebMOutputFormat, MkvOutputFormat, MovOutputFormat,
-  Quality, canEncodeVideo, canEncodeAudio, ConversionCanceledError,
+  Quality, canEncodeVideo, canEncodeAudio, ConversionCanceledError, EncodedPacketSink,
 } from 'mediabunny';
 import { createMediaInput } from './media-input.mjs';
+import { calibratedScale, projectedVideoRate } from './size-target.mjs';
 
 const $ = (id) => document.getElementById(id);
 const MB = 1_000_000; // decimal MB: stays under the limit whichever way an app counts
@@ -207,7 +208,7 @@ function fillSourceDependent() {
 
 /* ---------- planning: settings -> concrete encoder parameters ---------- */
 
-function computePlan(audioOverride, videoScale = 1) {
+function computePlan(audioOverride, videoScale = 1, calibratedRateScale = 1) {
   const i = state.info;
   const codec = $('codec').value, cinfo = CODECS[codec];
   const container = $('container').value;
@@ -297,6 +298,8 @@ function computePlan(audioOverride, videoScale = 1) {
   const width = k >= 1 ? even(sw) : even(sw * k), height = k >= 1 ? even(sh) : even(sh * k);
 
   // quality object
+  // The sample used this geometry, so tune only the encoder rate here.
+  if (strict && videoBps != null) videoBps *= calibratedRateScale;
   const bitrateMode = $('rc').value;
   let quality, rateLabel, estBytes = null;
   if (mode === 'quality') {
@@ -369,7 +372,6 @@ async function pickAudioCodec(plan) {
 }
 
 async function buildConversion(plan, audioMode, hw) {
-  const input = createMediaInput(state.file);
   const format = CONTAINERS[plan.container].make();
   const output = new Output({ format, target: new BufferTarget() });
 
@@ -389,24 +391,91 @@ async function buildConversion(plan, audioMode, hw) {
     if (plan.channels) audio.numberOfChannels = plan.channels;
   }
 
-  const conversion = await Conversion.init({
-    input, output, video, audio, tracks: 'primary', showWarnings: false,
-    trim: plan.trimmed ? { start: plan.start, end: plan.end } : undefined,
-  });
-  return { conversion, input, output, format };
+  const input = createMediaInput(state.file);
+  try {
+    const conversion = await Conversion.init({
+      input, output, video, audio, tracks: 'primary', showWarnings: false,
+      trim: plan.trimmed ? { start: plan.start, end: plan.end } : undefined,
+    });
+    return { conversion, input, output, format };
+  } catch (error) {
+    input.dispose();
+    throw error;
+  }
 }
 
 const lost = (conv, type) => conv.discardedTracks.find((d) => d.track.type === type && d.reason !== 'discarded_by_user');
 
-async function encodeOnce(videoScale, onProgress) {
+async function executeConversion(built, onProgress) {
+  const { conversion, input } = built;
+  try {
+    if (state.canceled) throw new ConversionCanceledError();
+    if (!conversion.isValid) throw new Error('This combination of settings is not possible on this device.');
+    state.conversion = conversion;
+    if (onProgress) conversion.onProgress = onProgress;
+    await conversion.execute();
+  } finally {
+    state.conversion = null;
+    input.dispose();
+  }
+}
+
+async function sampleVideoRate(plan, sample, hw) {
+  try {
+    const built = await buildConversion(sample, 'none', hw);
+    await executeConversion(built);
+    const input = createMediaInput(new Blob([built.output.target.buffer]));
+    try {
+      const track = await input.getPrimaryVideoTrack();
+      const packets = new EncodedPacketSink(track).packets(undefined, undefined, { metadataOnly: true });
+      return await projectedVideoRate(packets, plan.dur, plan.kf);
+    } finally {
+      input.dispose();
+    }
+  } catch (error) {
+    if (state.canceled || error instanceof ConversionCanceledError) throw error;
+    // Sampling is optional. The normal conversion can still use its fallbacks.
+    return null;
+  }
+}
+
+async function calibrateSizeTarget(plan) {
+  const length = Math.min(1, plan.dur * 0.10);
+  if (!plan.strict || length * plan.fps < 12) return null;
+  $('runTitle').textContent = 'Checking target size…';
+  const start = plan.start + (plan.dur - length) / 2;
+  const sample = { ...plan, trimmed: true, start, end: start + length };
+  let hw = plan.hw;
+  let rate = await sampleVideoRate(plan, sample, hw);
+  if (!(rate > 0)) return null;
+  // Some hardware encoders stop increasing quality well below the requested
+  // bitrate. Compare the same scene on software before switching encoders.
+  if (hw === 'no-preference' && rate < plan.videoBps * 0.75 &&
+      await canEncodeVideo(plan.codec, {
+        width: plan.width, height: plan.height, quality: plan.quality, hardwareAcceleration: 'prefer-software',
+      }).catch(() => false)) {
+    const softwareRate = await sampleVideoRate(plan, sample, 'prefer-software');
+    // A nearly static scene may use very few bytes on either encoder.
+    // Switch only if the improvement is material relative to the budget.
+    const error = Math.abs(rate - plan.videoBps);
+    const softwareError = Math.abs(softwareRate - plan.videoBps);
+    if (softwareRate > 0 && error - softwareError > 0.10 * plan.videoBps) {
+      rate = softwareRate;
+      hw = 'prefer-software';
+    }
+  }
+  return { hw, scale: calibratedScale(plan, rate) };
+}
+
+async function encodeOnce(videoScale, calibration, onProgress) {
   let plan, built;
   const messages = [];
   // Try the requested audio handling first, then fall back: transcode -> copy -> drop.
   const requested = computePlan(undefined, videoScale).audioMode;
   const chain = requested === 'none' ? ['none'] : requested === 'copy' ? ['copy', 'none'] : [requested, 'copy', 'none'];
   for (const audioMode of chain) {
-    plan = computePlan(audioMode, videoScale);
-    let hw = plan.hw;
+    plan = computePlan(audioMode, videoScale, calibration?.scale);
+    let hw = calibration?.hw ?? plan.hw;
     built = await buildConversion(plan, audioMode, hw);
     if (lost(built.conversion, 'video') && hw !== 'no-preference') {
       built.input.dispose();
@@ -430,16 +499,8 @@ async function encodeOnce(videoScale, onProgress) {
     built.input.dispose();
   }
 
-  const { conversion, input, output, format } = built;
-  if (!conversion.isValid) { input.dispose(); throw new Error('This combination of settings is not possible on this device.'); }
-  state.conversion = conversion;
-  conversion.onProgress = onProgress;
-  try {
-    await conversion.execute();
-  } finally {
-    state.conversion = null;
-    input.dispose();
-  }
+  const { output, format } = built;
+  await executeConversion(built, onProgress);
   const blob = new Blob([output.target.buffer], { type: format.mimeType });
   return { blob, plan, format, messages };
 }
@@ -460,10 +521,11 @@ async function run() {
   const maxPasses = 3;
   let scale = 1, best = null, pass = 1;
   try {
+    const calibration = await calibrateSizeTarget(computePlan());
     for (;;) {
       const passStart = performance.now();
       $('runTitle').textContent = pass === 1 ? 'Compressing…' : `Over target – pass ${pass} of up to ${maxPasses}…`;
-      const res = await encodeOnce(scale, (p, t) => {
+      const res = await encodeOnce(scale, calibration, (p, t) => {
         const el = (performance.now() - passStart) / 1000;
         const eta = p > 0.02 ? el * (1 - p) / p : null;
         setProgress(p, [eta != null ? fmtTime(eta) + ' left' : 'starting…', el > 1 && t ? (t / el).toFixed(1) + '× speed' : null].filter(Boolean).join(' · '));
